@@ -1,0 +1,645 @@
+
+
+```{r}
+library(gridExtra)
+library(dplyr)
+library(scales)
+library(ggplot2)
+library(reshape2)
+library(glmnet)
+library(rsample)
+
+
+#import dataset
+shopping_data = read.csv(file = "D:/r_program/customer_shopping_data.csv")
+shopping_data
+
+new_shopping_data <- shopping_data[, !(names(shopping_data) %in% c("invoice_no", "customer_id", "shopping_mall"))]
+
+new_shopping_data
+
+
+# format invoice_date
+shopping_data$invoice_date <- as.Date(shopping_data$invoice_date, format = "%d/%m/%Y")
+
+#year for grouping data
+shopping_data$year <- format(shopping_data$invoice_date, "%Y")
+
+#year for grouping data
+shopping_data$month <- format(shopping_data$invoice_date, "%m")
+
+#quantity group_by month and year
+aggregated_data <- shopping_data %>%
+  group_by(year, month) %>%
+  summarise(total_quantity = sum(quantity), .groups = "drop")
+aggregated_data
+
+#total price group_by month and year
+aggregated_data_price <- shopping_data %>%
+  group_by(year, month) %>%
+  summarise(total_quantity = sum(quantity),
+            total_price = sum(price),
+            .groups = "drop")
+
+
+#get month name in short form
+month_labels <- substr(month.name, 1, 3)
+
+output_plot_price_over_time <- ggplot(aggregated_data_price, aes(x = factor(month, labels = month_labels), y = total_price, group = year, color = factor(year))) +
+  geom_line(linewidth = 1.5) +  
+  labs(title = "Total Sale amount by month of the year",
+       x = "Month",
+       y = "Total Price",
+       color = "Year") +
+  theme_minimal() + 
+  scale_y_continuous(labels = scales::number_format()) +
+  scale_color_discrete(name = "Year") +
+  theme(
+    plot.background = element_rect(linewidth = 2)  
+  )
+
+
+
+output_plot <- ggplot(aggregated_data, aes(x = factor(month, labels = month_labels), y = total_quantity, group = year, color = factor(year))) +
+  geom_line(linewidth = 1.5) +  
+  labs(title = "Total  Quantity Sales by Month of the Year",
+       x = "Month",
+       y = "Total Sales Quantity",
+       color = "Year") +
+  theme_minimal() + 
+  scale_y_continuous(labels = scales::number_format()) +
+  scale_color_discrete(name = "Year")+
+   theme(
+    plot.background = element_rect(linewidth = 2)  
+  )
+
+
+# Display the plot
+print(output_plot_price_over_time)
+print(output_plot)
+
+
+
+```
+
+
+```{r}
+
+# Calculate the total quantity sold for each product
+product_quantity <- shopping_data %>%
+  group_by(category) %>%
+  summarise(total_quantity = sum(quantity)) %>%
+  arrange(desc(total_quantity)) # Arrange in descending order of total quantity
+
+
+# Create a  plot for the distribution of total quantity sold for each product
+distribution_plot <- ggplot(product_quantity, aes(x = reorder(category, -total_quantity), y = total_quantity, color = category, group = 1)) +
+  geom_line() +  # Change to geom_line()
+  geom_point() +  # Add points for emphasis
+  geom_hline(yintercept = mean(product_quantity$total_quantity), linetype = "dashed", color = "red") +
+  annotate("text", x = Inf, y = mean(product_quantity$total_quantity), label = paste("Mean:", scales::comma(round(mean(product_quantity$total_quantity)))), hjust = -1, vjust = 2, color = "red", size = 4) +  # Add annotation for mean value
+  labs(title = "Distribution of Total Quantity Sold for Each Category",
+       x = "Category Name",
+       y = "Total Quantity Sold",
+       color = "Category",
+       fill = "Total Quantity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  scale_fill_gradient(low = "lightyellow", high = "green", labels = scales::comma_format()) + # Display total quantity index in normal values
+  coord_flip()
+
+
+print(distribution_plot)
+
+
+density_plot <- ggplot(shopping_data, aes(x = price)) +
+  geom_density(fill = "skyblue", color = "black") +
+  labs(title = "Density Plot of Price",
+       x = "Price",
+       y = "Density") +
+  theme_minimal()
+
+# Display the plot
+print(density_plot)
+
+install.packages("imager")
+
+```
+
+
+
+
+```{r}
+
+# Convert categorical variables to numeric factors
+shopping_data$gender <- as.numeric(factor(shopping_data$gender))
+shopping_data$category <- as.numeric(factor(shopping_data$category))
+
+
+# Calculate correlation matrix
+correlation_matrix <- cor(shopping_data[c( "gender", "age", "category", "quantity", "price")])
+
+# Plot correlation matrix
+correlation_plot <- ggplot(data = melt(correlation_matrix), aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limits = c(-1,1), 
+                       name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_text(angle = 45, hjust = 1))
+
+# Display correlation plot
+correlation_plot
+#######################################################
+
+
+# Scatter plots
+par(mfrow=c(2, 3))  # Setting up a 2x3 grid for plots
+# not imp as no correlation shown 
+plot(shopping_data$gender, shopping_data$quantity, main="Gender vs Quantity", xlab="Gender", ylab="Quantity")
+# not imp as no correlation shown 
+plot(shopping_data$age, shopping_data$quantity, main="Age vs Quantity", xlab="Age", ylab="Quantity")
+# not imp as no correlation shown 
+plot(shopping_data$category, shopping_data$quantity, main="Category vs Quantity", xlab="Category", ylab="Quantity")
+
+plot(shopping_data$price, shopping_data$category, main="Price vs category", xlab="Price", ylab="Quantity")
+
+plot(shopping_data$price, shopping_data$quantity, main="Price vs Quantity", xlab="Price", ylab="Quantity")
+
+# Scatter plots
+scatter_plots <- list()
+
+scatter_plots
+
+```
+
+```{r}
+# Define the data matrix X and the response vector y
+x <- shopping_data[, !(names(shopping_data) %in% c("invoice_no", "customer_id", "quantity", "invoice_date", "gender", "shopping_mall"))]
+x$X1 <- x$age
+x$X2 <- as.numeric(as.factor(x$category))
+x$X3 <- x$price
+x$X4 <- as.numeric(as.factor(x$payment_method))
+x <- x[, c("X1", "X2", "X3", "X4")]
+
+# Convert data to matrix format
+x <- as.matrix(x)
+y <- as.matrix(shopping_data$quantity)
+
+# Define a matrix of ones
+ones <- matrix(1, nrow(x), 1)
+
+# Define different feature combinations for each model
+Y1 <- cbind(ones, x[, "X4"], x[, "X1"]^2, x[, "X1"]^3, x[, "X2"]^4, x[, "X1"]^4)
+Y2 <- cbind(ones, x[, "X4"], x[, "X1"]^3, x[, "X3"]^4)
+Y3 <- cbind(ones, x[, "X3"]^3, x[, "X3"]^4)
+Y4 <- cbind(ones, x[, "X2"], x[, "X1"]^3, x[, "X3"]^4)
+Y5 <- cbind(ones, x[, "X4"], x[, "X1"]^2, x[, "X1"]^3, x[, "X3"]^4)
+
+# Function to fit ridge regression model and print coefficients
+fit_ridge <- function(Y, y, alpha = 0, lambda = 1) {
+  ridge_model <- glmnet(Y, y, alpha = alpha, lambda = lambda)
+  thetaHat <- coef(ridge_model)
+  print(thetaHat)
+}
+
+
+# Fit and print coefficients for each model
+cat("Model 1 coefficients:\n")
+Model1_thetahat = fit_ridge(Y1, y)
+
+
+
+cat("Model 2 coefficients:\n")
+Model2_thetahat =fit_ridge(Y2, y)
+cat("Model 3 coefficients:\n")
+Model3_thetahat =fit_ridge(Y3, y)
+cat("Model 4 coefficients:\n")
+Model4_thetahat =fit_ridge(Y4, y)
+cat("Model 5 coefficients:\n")
+Model5_thetahat =fit_ridge(Y5, y)
+Model2_thetahat
+
+
+
+
+ones <- matrix(1 , nrow(x), 1)
+cat("ones:\n")
+
+
+#Task 2.1
+# Model 1
+cat("Model 1 coefficients:\n")
+# Binding data from equation of model 1.
+X_model1 <- cbind(ones, x[, "X4"], x[, "X1"]^2, x[, "X1"]^3, x[, "X2"]^4, x[, "X1"]^4)
+print("X_model1:")
+print(X_model1)
+
+# Calculating thetahat of Model 1
+Model1_thetahat <- solve(t(X_model1) %*% X_model1) %*% t(X_model1) %*% y
+cat("Model 1 thetahat:\n")
+print(Model1_thetahat)
+
+# Model 2
+cat("Model 2 coefficients:\n")
+# Binding data from equation of model 2.
+X_model2 <- cbind(ones, x[, "X4"], x[, "X1"]^3, x[, "X3"]^4)
+print("X_model2:")
+print(X_model2)
+
+# Calculating thetahat of Model 2
+Model2_thetahat <- solve(t(X_model2) %*% X_model2) %*% t(X_model2) %*% y
+cat("Model 2 thetahat:\n")
+print(Model2_thetahat)
+
+# Model 3
+cat("Model 3 coefficients:\n")
+# Binding data from equation of model 3.
+X_model3 <- cbind(ones, (x[, "X3"])^3, (x[, "X3"])^4)
+print("X_model3:")
+print(X_model3)
+
+# Calculating thetahat of Model 3
+Model3_thetahat <- solve(t(X_model3) %*% X_model3) %*% t(X_model3) %*% y
+cat("Model 3 thetahat:\n")
+print(Model3_thetahat)
+
+# Model 4
+cat("Model 4 coefficients:\n")
+# Binding data from equation of model 4.
+X_model4 <- cbind(ones, x[, "X2"], (x[, "X1"])^3, (x[, "X3"])^4)
+print("X_model4:")
+print(X_model4)
+
+# Calculating thetahat of Model 4
+Model4_thetahat <- solve(t(X_model4) %*% X_model4) %*% t(X_model4) %*% y
+cat("Model 4 thetahat:\n")
+print(Model4_thetahat)
+
+# Model 5
+cat("Model 5 coefficients:\n")
+# Binding data from equation of model 5.
+X_model5 <- cbind(ones, x[, "X4"], (x[, "X1"])^2, (x[, "X1"])^3, x[, "X3"]^4)
+print("X_model5:")
+print(X_model5)
+
+# Calculating thetahat of Model 5
+Model5_thetahat <- solve(t(X_model5) %*% X_model5) %*% t(X_model5) %*% y
+cat("Model 5 thetahat:\n")
+print(Model5_thetahat)
+```
+```{r}
+Y_hat_ridge1 <- predict(ridge_model1, s = lambda, newx = Y1)
+# Calculate residuals
+residuals_ridge <- y - Y_hat_ridge1
+# Calculate RSS for the ridge regression model
+RSS_ridge <- sum(residuals_ridge^2)
+# Extract coefficients for the specified lambda
+coefficients_ridge <- coef(ridge_model1, s =lambda)
+# Map coefficients to the corresponding columns of model1
+Y_hat_m1 <- as.matrix(Y1) %*% coefficients_ridge[-1] # Exclude the intercept term
+
+# Calculate RSS for Model 1
+residuals_m1 <- y - Y_hat_m1
+RSS_Model_1 <- sum(residuals_m1^2)
+print(RSS_Model_1)
+
+#model2
+Y_hat_ridge2 <- predict(ridge_model2, s = lambda, newx = Y2)
+residuals_ridge <- y - Y_hat_ridge2
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model2, s =lambda)
+Y_hat_m2 <- as.matrix(Y2) %*% coefficients_ridge[-1]
+residuals_m2 <- y - Y_hat_m2
+RSS_Model_2 <- sum(residuals_m2^2)
+print(RSS_Model_2)
+#model3
+ridge_model3 <- glmnet(Y3, y, alpha = alpha, lambda = lambda)
+Y_hat_ridge3 <- predict(ridge_model3, s = lambda, newx = Y3)
+residuals_ridge <- y - Y_hat_ridge3
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model3, s =lambda)
+Y_hat_m3 <- as.matrix(Y3) %*% coefficients_ridge[-1]
+residuals_m3 <- y - Y_hat_m3
+RSS_Model_3 <- sum(residuals_m3^2)
+print(RSS_Model_3)
+#model4
+ridge_model4 <- glmnet(Y4, y, alpha = alpha, lambda = lambda)
+Y_hat_ridge4 <- predict(ridge_model4, s = lambda, newx = Y4)
+residuals_ridge <- y - Y_hat_ridge4
+RSS_ridge <- sum(residuals_ridge^2)
+
+coefficients_ridge <- coef(ridge_model4, s =lambda)
+Y_hat_m4 <- as.matrix(Y4) %*% coefficients_ridge[-1]
+residuals_m4 <- y - Y_hat_m4
+RSS_Model_4 <- sum(residuals_m4^2)
+print(RSS_Model_4)
+#model5
+ridge_model5 <- glmnet(Y5, y, alpha = alpha, lambda = lambda)
+Y_hat_ridge5 <- predict(ridge_model5, s = lambda, newx = Y5)
+residuals_ridge <- y - Y_hat_ridge5
+RSS_ridge <- sum(residuals_ridge^2)
+coefficients_ridge <- coef(ridge_model5, s =lambda)
+Y_hat_m5 <- as.matrix(Y5) %*% coefficients_ridge[-1]
+residuals_m5 <- y - Y_hat_m5
+RSS_Model_5 <- sum(residuals_m5^2)
+print(RSS_Model_5)
+
+
+###############################################################
+print(RSS_Model_2)
+N=length(y)
+
+
+#Calculating the Variance of Model 1
+
+Variance_model1=RSS_Model_1/(N-1)
+
+#Calculating the log-likelihood of Model 1
+
+likehood_Model_1= -(N/2)*(log(2*pi))-(N/2)*(log(Variance_model1))- (1/(2*Variance_model1))*RSS_Model_1
+likehood_Model_1
+Variance_model2=RSS_Model_2/(N-1)
+#Calculating the log-likelihood of Model 1
+likehood_Model_2=-(N/2)*(log(2*pi))-(N/2)*(log(Variance_model2))- (1/(2*Variance_model2))*RSS_Model_2
+likehood_Model_2
+Variance_model3=RSS_Model_3/(N-1)
+Variance_model3
+#Calculating the log-likelihood of Model 1
+likehood_Model_3=-(N/2)*(log(2*pi))-(N/2)*(log(Variance_model3))- (1/(2*Variance_model3))*RSS_Model_3
+likehood_Model_3
+Variance_model4=RSS_Model_2/(N-1)
+Variance_model4
+#Calculating the log-likelihood of Model 1
+likehood_Model_4=-(N/2)*(log(2*pi))-(N/2)*(log(Variance_model4))- (1/(2*Variance_model4))*RSS_Model_4
+likehood_Model_4
+Variance_model5=RSS_Model_5/(N-1)
+Variance_model5
+#Calculating the log-likelihood of Model 1
+likehood_Model_5=-(N/2)*(log(2*pi))-(N/2)*(log(Variance_model5))- (1/(2*Variance_model5))*RSS_Model_5
+likehood_Model_5
+
+# Evaluating AIC and BIC 
+ #Define the number of observations
+N <- length(y)
+
+# Define the number of parameters for each model
+K_model1 <- length(Model1_thetahat)
+K_model2 <- length(Model2_thetahat)
+K_model3 <- length(Model3_thetahat)
+K_model4 <- length(Model4_thetahat)
+K_model5 <- length(Model5_thetahat)
+K_model1
+
+# Calculate AIC for each model
+AIC_model1 <- 2 * K_model1 - 2 * likehood_Model_1
+AIC_model2 <- 2 * K_model2 - 2 * likehood_Model_2
+AIC_model3 <- 2 * K_model3 - 2 * likehood_Model_3
+AIC_model4 <- 2 * K_model4 - 2 * likehood_Model_4
+AIC_model5 <- 2 * K_model5 - 2 * likehood_Model_5
+
+# Calculate BIC for each model
+BIC_model1 <- K_model1 * log(N) - 2 * likehood_Model_1
+BIC_model2 <- K_model2 * log(N) - 2 * likehood_Model_2
+BIC_model3 <- K_model3 * log(N) - 2 * likehood_Model_3
+BIC_model4 <- K_model4 * log(N) - 2 * likehood_Model_4
+BIC_model5 <- K_model5 * log(N) - 2 * likehood_Model_5
+
+# Output the results
+AIC_model1
+BIC_model1
+AIC_model2
+BIC_model2
+AIC_model3
+BIC_model3
+AIC_model4
+BIC_model4
+AIC_model5
+BIC_model5
+```
+
+```{r}
+
+
+###################
+###################################
+# Assuming you have already fitted the candidate models and obtained the predictions
+# Let's assume you have variables named Y_hat_m1, Y_hat_m2, ..., Y_hat_m5 for the predictions
+
+# Step 1: Calculate residuals for each model
+residuals_m1 <- y - Y_hat_m1
+residuals_m2 <- y - Y_hat_m2
+residuals_m3 <- y - Y_hat_m3
+residuals_m4 <- y - Y_hat_m4
+residuals_m5 <- y - Y_hat_m5
+
+
+
+# Step 3: Create Q-Q plots
+qqnorm(residuals_m1, main="Q-Q Plot - Model 1 Residuals", col="blue")
+
+qqline(residuals_m1)
+qqnorm(residuals_m2, main="Q-Q Plot - Model 2 Residuals", col="blue")
+qqline(residuals_m2)
+qqnorm(residuals_m3, main="Q-Q Plot - Model 3 Residuals", col="blue")
+qqline(residuals_m3)
+qqnorm(residuals_m4, main="Q-Q Plot - Model 4 Residuals", col="blue")
+qqline(residuals_m4)
+qqnorm(residuals_m5, main="Q-Q Plot - Model 5 Residuals", col="blue")
+qqline(residuals_m5)
+
+
+```
+###############################
+#######################################
+################################
+```{r}
+
+
+# Splitting the data into training and testing sets for output (Y)
+split_X <- initial_split(data = as.data.frame(x), prop = 0.7)
+split_Y <- initial_split(data = as.data.frame(y), prop = 0.7)
+
+# Splitting the data into training and testing sets for input features (X)
+X_training_set <- training(split_X)
+X_testing_set <- testing(split_X)
+Y_training_set <- as.matrix(training(split_Y))
+Y_testing_set <- as.matrix(testing(split_Y))
+
+
+## Estimate model parameters using the training set
+traning_ones <- matrix(1, nrow = nrow(X_training_set), ncol = 1)
+
+X_traning_model <- cbind(traning_ones, X_training_set[,"X2"], (X_training_set[,"X1"])^3, (X_training_set[,"X3"])^4)
+
+traning_thetahat <- ginv(t(X_traning_model) %*% X_traning_model) %*% t(X_traning_model) %*% Y_training_set
+
+# Create the design matrix for the selected 'best' model
+traning_ones <- matrix(1, nrow = nrow(X_training_set), ncol = 1)
+X_training_model <- cbind(traning_ones, X_training_set[,"X2"], (X_training_set[,"X1"])^3,
+(X_training_set[,"X3"])^4)
+theta_hat <- ginv(t(X_training_model) %*% X_training_model) %*% t(X_training_model)%*% Y_training_set
+
+# Create the design matrix for the testing data using the same model equation
+traning_ones_test <- matrix(1, nrow = nrow(X_testing_set), ncol = 1)
+X_testing_model <- cbind(traning_ones_test, X_testing_set[,"X2"],
+(X_testing_set[,"X1"])^3, (X_testing_set[,"X3"])^4)
+# calculate model predictions on the testing data
+Y_testing_hat <- X_testing_model %*% theta_hat
+# Evaluating 95% confidence intervals for the model predictions
+z <- qnorm(0.975) # Z-score for 95% confidence interval
+n_len <- nrow(X_testing_model)
+error <- Y_testing_set - Y_testing_hat
+valid_indices <- (error != 0) # Check for non-zero error values
+# Ensure that the values inside sqrt are non-negative using abs function
+C_I_1 <- ifelse(valid_indices, z * sqrt(abs(error * (1 - error)) / n_len), 0)
+39
+C_I_2 <- ifelse(valid_indices, z * sqrt(abs(error * (1 + error)) / n_len), 0)
+# Plotting
+plot(Y_testing_set, col = "red", pch = 19, xlab = "Index", ylab = "Y Value", main = "Model
+Predictions and 95% Confidence Intervals")
+points(Y_testing_hat, col = "blue", pch = 19)
+# Add error bars for 95% confidence intervals
+arrows(x0 = 1:n_len, y0 = Y_testing_hat - C_I_1, y1 = Y_testing_hat + C_I_2, angle = 90,
+code = 3, length = 0.1, col = "green")
+# Legend
+legend("topright", legend = c("Testing Data", "Model Predictions", "95% CI"), col = c("red",
+"blue", "green"), pch = 19, cex = 0.8)
+
+
+
+######################################
+########################################|
+###
+
+
+# Using Model 3, keeping selected parameters constant
+theta_bias <- 0.448299550
+
+theta_one <- 0.038109255
+
+theta_two <- 0.009827804
+
+theta_four <- 0.002092558
+
+epsilon <- RSS_Model_3 * 2 
+ 
+# Fixing epsilon value
+
+num_iterations <- 100
+
+accepted_values_1 <- numeric(num_iterations)
+
+accepted_values_2 <- numeric(num_iterations)
+
+counter <- 0
+
+dim(Y)
+dim(new_Y_Hat)
+
+# Performing rejection ABC
+for (i in 1:num_iterations) {
+  
+  range1 <- runif(1, -theta_bias, theta_bias)
+  
+  range2 <- runif(1, -theta_one, theta_one)
+  
+ new_theta_hat <- c(range1, range2, theta_two)
+ 
+ new_theta_hat <- matrix(new_theta_hat, ncol = 1)
+  
+  new_Y_Hat <- Y3 %*% new_theta_hat
+  
+
+  new_RSS <- sum((Y -new_Y_Hat)^2)
+  
+  if (new_RSS > epsilon) {
+    accepted_values_1[counter + 1] <- range1
+    accepted_values_2[counter + 1] <- range2
+    counter <- counter + 1
+  }
+}
+
+# Filter out unused elements in the accepted_values vectors
+accepted_values_1 <- accepted_values_1[1:counter]
+accepted_values_2 <- accepted_values_2[1:counter]
+
+# Plot histograms of accepted parameter values
+hist(accepted_values_1, main = "Histogram of Accepted Values (Parameter 1)")
+hist(accepted_values_2, main = "Histogram of Accepted Values (Parameter 2)")
+
+# Plot joint and marginal posterior distribution
+plot(accepted_values_1, accepted_values_2, col = c("green", "red"), 
+     main = "Joint and Marginal Posterior Distribution")
+
+```
+```{r}
+
+ # Set the fixed parameters from Model 3
+# Set the fixed parameters from Model 3
+theta_bias <- 0.448299550
+theta_one <- 0.038109255
+theta_two <- 0.009827804
+theta_four <- 0.002092558
+
+# Compute the epsilon value
+epsilon <- RSS_Model_3 * 2
+
+# Define the number of iterations
+num_iterations <- 100
+
+# Initialize vectors to store accepted values
+accepted_values_1 <- numeric(num_iterations)
+accepted_values_2 <- numeric(num_iterations)
+
+# Perform rejection ABC
+counter <- 0
+for (i in 1:num_iterations) {
+  # Generate random values within the specified ranges
+  range1 <- runif(1, -theta_bias, theta_bias)
+  range2 <- runif(1, -theta_one, theta_one)
+  
+  dim (Y)
+  
+  # Update the parameter values
+  new_theta_hat <- c(range1, range2, theta_two, theta_four)
+  
+ # Flatten new_Y_Hat to make it a vector
+new_Y_Hat <- as.vector(new_Y_Hat)
+
+# Calculate the RSS for the new parameter values
+new_RSS <- sum((as.vector(Y) - new_Y_Hat)^2)
+  
+  # Check if the RSS is within the epsilon range
+  if (new_RSS <= epsilon) {
+    accepted_values_1[counter + 1] <- range1
+    accepted_values_2[counter + 1] <- range2
+    counter <- counter + 1
+  }
+}
+
+# Remove unused entries from the accepted values vectors
+accepted_values_1 <- accepted_values_1[1:counter]
+accepted_values_2 <- accepted_values_2[1:counter]
+
+# Plot the histograms of accepted values
+par(mfrow = c(1, 2))
+hist(accepted_values_1, main = "Histogram of Accepted Values (Parameter 1)")
+hist(accepted_values_2, main = "Histogram of Accepted Values (Parameter 2)")
+
+library(png)
+
+image_path <- "C:/Users/GAURAV/Desktop/r/final.png"
+
+# Read the PNG image
+image <- readPNG(image_path)
+
+# Create an empty plot
+plot(0, 0, type = "n", xlab = "", ylab = "", axes = FALSE)
+
+# Display the image
+rasterImage(image, 0, 0, 1, 1)
+```
+
+
+
+
